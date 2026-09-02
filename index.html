@@ -34,37 +34,20 @@
         .highlight-scan { border-color: #eab308 !important; background-color: rgba(234, 179, 8, 0.25) !important; transform: scale(1.05); }
         .highlight-found { border-color: #22c55e !important; background-color: rgba(34, 197, 94, 0.25) !important; transform: scale(1.1); box-shadow: 0 0 15px rgba(34, 197, 94, 0.5); }
         .highlight-fail { opacity: 0.3; transform: scale(0.95); }
-        .pdf-render-mode h2, .pdf-render-mode h3, .pdf-render-mode p, .pdf-render-mode span {
+        .highlight-swap { border-color: #ec4899 !important; background-color: rgba(236, 72, 153, 0.25) !important; transform: scale(1.05); }
+
+        /* PDF Render Mode Khusus Cetak/PDF */
+        .pdf-render-mode h2, .pdf-render-mode h3, .pdf-render-mode p, .pdf-render-mode span, .pdf-render-mode label {
             color: black !important;
         }
         .pdf-render-mode .bg-dark-800, .pdf-render-mode .bg-slate-900, .pdf-render-mode .bg-emerald-950\/30 {
-            background-color: #f8fafc !important;
-            border: 1px solid #cbd5e1 !important;
+            background-color: #ffffff !important;
+            border: 1px solid #94a3b8 !important;
         }
-        
-        /* Trik Mirroring untuk Fix Bug HTML2Canvas pada Form Input */
-        .pdf-mirror {
-            display: block !important;
-            width: 100% !important;
-            min-height: 38px !important;
-            padding: 8px 12px !important;
-            border: 1px solid #64748b !important;
-            border-radius: 0.375rem !important;
+        .pdf-render-mode input[type="text"], .pdf-render-mode textarea {
             background-color: #ffffff !important;
             color: #000000 !important;
-            font-family: 'Inter', sans-serif !important;
-            font-size: 0.875rem !important;
-            white-space: pre-wrap !important;
-            word-break: break-word !important;
-            margin-top: 0.25rem !important;
-        }
-        .pdf-mirror-xs {
-            font-size: 0.75rem !important;
-            min-height: 32px !important;
-            padding: 6px 8px !important;
-        }
-        .pdf-mirror-textarea {
-            min-height: 60px !important;
+            border: 1px solid #64748b !important;
         }
     </style>
 </head>
@@ -158,11 +141,11 @@
                     <h2 class="text-3xl font-bold text-white mt-2">📊 Live Monitoring</h2>
                 </div>
                 <div class="flex flex-wrap gap-2">
+                    <button onclick="fetchLeaderboardData()" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-3 py-2 rounded-xl shadow-lg transition text-xs flex items-center gap-1 cursor-pointer">
+                        🔄 Refresh
+                    </button>
                     <button onclick="downloadCSV()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-3 py-2 rounded-xl shadow-lg transition text-xs flex items-center gap-1 cursor-pointer">
                         📥 Spreadsheet
-                    </button>
-                    <button onclick="confirmResetClassData()" class="bg-rose-700 hover:bg-rose-600 text-white font-bold px-3 py-2 rounded-xl shadow-lg transition text-xs flex items-center gap-1 cursor-pointer">
-                        🗑️ Reset
                     </button>
                     <button onclick="triggerRandomPicker()" class="bg-amber-600 hover:bg-amber-500 text-white font-bold px-3 py-2 rounded-xl shadow-lg transition text-xs flex items-center gap-1 cursor-pointer">
                         🎲 Random
@@ -369,7 +352,7 @@
                     </button>
                 </div>
 
-                <!-- WADAH UTAMA LKPD (Ini yang akan di-capture oleh html2canvas) -->
+                <!-- WADAH UTAMA LKPD (Ini yang di-capture oleh html2canvas) -->
                 <div id="printAreaLkpd" class="bg-slate-900 p-6 sm:p-8 rounded-xl border border-slate-700 space-y-8 text-slate-200">
                     
                     <div class="bg-dark-800 p-5 rounded-xl border border-slate-700 space-y-4">
@@ -549,8 +532,13 @@
     </main>
 
     <script>
+        // CONFIG GOOGLE SHEET WEB APP URL
+        const SHEET_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxage2ue8G7EohHdlTgZhffG4kw1ijqqxFlJOwh_xdfep9qr14Eb-63fCIU9ITolVIZ/exec";
+
         let currentUser = { name: '', class: '' };
         let currentMode = 'pretest'; 
+        window.firebaseData = { leaderboard: [] };
+        window.studentScores = { pre: null, post: null };
 
         const questions = [
             { q: "Struktur data digunakan untuk...", options: { A: "Membuat komputer menjadi lebih cepat", B: "Mengorganisasi dan mengelola data agar mudah digunakan", C: "Menghapus semua data dalam komputer", D: "Mengubah data menjadi gambar" }, ans: "B" },
@@ -592,7 +580,6 @@
             }
         }
 
-        // PENTING: Clear field saat login
         function startStudentSession() {
             const name = document.getElementById('studentName').value.trim();
             const cls = document.getElementById('studentClass').value.trim();
@@ -602,22 +589,16 @@
             }
             currentUser.name = name;
             currentUser.class = cls;
-            
             window.currentStudentKey = (name + "_" + cls).toLowerCase().replace(/\s+/g, '_');
             
             document.getElementById('userDisplay').innerHTML = `🧑‍💻 ${name} <span class="bg-slate-700 px-2 py-1 rounded-md ml-2 text-xs">${cls}</span>`;
             document.getElementById('welcomeModal').classList.add('hidden');
             
-            // RESET SEMUA ISI LKPD agar tidak membawa data siswa lama
             resetLKPDFields();
             document.getElementById('lkpdLeader').value = name;
             document.getElementById('lkpdClass').value = cls;
 
-            if (window.fetchStudentScores) {
-                window.fetchStudentScores(window.currentStudentKey);
-            } else {
-                nav('pretest');
-            }
+            fetchStudentScores(window.currentStudentKey);
         }
 
         function verifyTeacherSession() {
@@ -639,7 +620,6 @@
             switchRoleTab('student');
         }
 
-        // PENTING: Clear field saat logout
         function logoutStudent() {
             window.currentStudentKey = null;
             window.studentScores = { pre: null, post: null };
@@ -671,17 +651,16 @@
 
             if (section === 'pretest') {
                 currentMode = 'pretest';
-                setupTest('Pretest', window.studentScores ? window.studentScores.pre : null);
+                setupTest('Pretest', window.studentScores.pre);
                 document.getElementById('sec-test').classList.remove('hidden');
             } else if (section === 'posttest') {
-                const currentPre = window.studentScores ? window.studentScores.pre : null;
-                if (currentPre === null) {
+                if (window.studentScores.pre === null) {
                     showModal('Perhatian', 'Selesaikan Pretest dan Simulasi terlebih dahulu ya!', '⛔');
                     nav('pretest');
                     return;
                 }
                 currentMode = 'posttest';
-                setupTest('Posttest', window.studentScores ? window.studentScores.post : null);
+                setupTest('Posttest', window.studentScores.post);
                 document.getElementById('sec-test').classList.remove('hidden');
             } else if (section === 'simulasi') {
                 document.getElementById('sec-simulasi').classList.remove('hidden');
@@ -689,29 +668,89 @@
                 document.getElementById('sec-lkpd').classList.remove('hidden');
             } else if (section === 'leaderboard') {
                 document.getElementById('sec-leaderboard').classList.remove('hidden');
-                updateLeaderboard();
+                fetchLeaderboardData();
             } else if (section === 'teacherdash') {
                 document.getElementById('sec-teacherdash').classList.remove('hidden');
-                if (typeof updateTeacherDashboard === 'function') updateTeacherDashboard();
+                fetchLeaderboardData();
             }
         }
 
-        /* --- FUNGSI PDF GENERATOR ULTIMATE (JS-PDF + Html2Canvas dengan Pagination) --- */
+        /* --- FUNGSI GOOGLE SHEET SYNC --- */
+        async function fetchLeaderboardData() {
+            if (SHEET_WEB_APP_URL.includes("URL_WEB_APP")) return;
+            try {
+                const res = await fetch(SHEET_WEB_APP_URL);
+                const data = await res.json();
+                
+                data.sort((a, b) => {
+                    const postA = a.post !== null && a.post !== undefined ? a.post : -1;
+                    const postB = b.post !== null && b.post !== undefined ? b.post : -1;
+                    if (postB !== postA) return postB - postA;
+                    const preA = a.pre !== null && a.pre !== undefined ? a.pre : -1;
+                    const preB = b.pre !== null && b.pre !== undefined ? b.pre : -1;
+                    return preB - preA;
+                });
+                
+                window.firebaseData.leaderboard = data;
+                updateLeaderboard();
+                updateTeacherDashboard();
+            } catch (e) {
+                console.warn("Gagal mengambil data Spreadsheet:", e);
+            }
+        }
+
+        async function fetchStudentScores(studentKey) {
+            if (SHEET_WEB_APP_URL.includes("URL_WEB_APP")) { nav('pretest'); return; }
+            try {
+                const res = await fetch(SHEET_WEB_APP_URL);
+                const data = await res.json();
+                const found = data.find(item => item.id === studentKey);
+                if (found) {
+                    window.studentScores.pre = found.pre !== undefined ? found.pre : null;
+                    window.studentScores.post = found.post !== undefined ? found.post : null;
+                } else {
+                    window.studentScores.pre = null; 
+                    window.studentScores.post = null;
+                }
+            } catch (e) {
+                window.studentScores.pre = null; 
+                window.studentScores.post = null;
+            }
+            nav('pretest');
+        }
+
+        async function saveScoreToSheet(preScore, postScore) {
+            if (SHEET_WEB_APP_URL.includes("URL_WEB_APP") || !window.currentStudentKey) return;
+            const payload = {
+                id: window.currentStudentKey,
+                name: currentUser.name,
+                class: currentUser.class,
+                pre: preScore !== undefined ? preScore : null,
+                post: postScore !== undefined ? postScore : null
+            };
+            try {
+                await fetch(SHEET_WEB_APP_URL, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+            } catch (e) {
+                console.warn("Gagal menyimpan ke Spreadsheet:", e);
+            }
+        }
+
+        /* --- PDF GENERATOR --- */
         async function downloadLKPDasPDF() {
             const btn = document.getElementById('btnDownloadPDF');
             const btnText = document.getElementById('btnPdfText');
             const printArea = document.getElementById('printAreaLkpd');
             const lkpdClass = document.getElementById('lkpdClass').value.trim() || 'Kelas';
             
-            // UI Feedback
             btn.disabled = true;
             btnText.innerText = "⏳ Menyusun Multi-Halaman...";
-            
-            // 1. Ubah class khusus agar latar jadi putih, teks hitam, dan form rapi
             printArea.classList.add('pdf-render-mode');
             
-            // 2. FIX UNTUK INPUT & TEXTAREA (Mencegah teks melayang/misaligned di html2canvas)
-            // Kita ubah sementara input/textarea menjadi elemen <div> biasa agar ter-render sempurna
             const inputs = printArea.querySelectorAll('input[type="text"], textarea');
             const mirrors = [];
             
@@ -721,73 +760,55 @@
                 if (input.classList.contains('text-xs')) extraClass += ' pdf-mirror-xs';
                 if (input.tagName.toLowerCase() === 'textarea') extraClass += ' pdf-mirror-textarea';
                 
-                mirror.className = 'pdf-mirror' + extraClass;
-                // Jika kosong, beri spasi agar kotaknya tetap memiliki tinggi
-                mirror.innerText = input.value || ' '; 
+                mirror.className = 'pdf-mirror bg-white text-black p-2 border border-slate-500 rounded my-1 text-xs whitespace-pre-wrap word-break' + extraClass;
+                mirror.innerText = input.value || ' ';
                 
                 input.parentNode.insertBefore(mirror, input.nextSibling);
-                // Simpan state display asli dan sembunyikan input asli
                 input.setAttribute('data-original-display', input.style.display);
                 input.style.display = 'none';
-                
                 mirrors.push({ input, mirror });
             });
 
-            // Beri waktu sejenak agar browser me-render perubahan CSS sebelum di-capture
             await sleep(500); 
 
             try {
-                // 3. Capture Area menjadi Canvas
                 const canvas = await html2canvas(printArea, {
-                    scale: 2, // Resolusi tinggi untuk teks yang tajam
+                    scale: 2,
                     useCORS: true,
                     backgroundColor: "#ffffff",
-                    scrollY: -window.scrollY // Memastikan posisi tidak tergeser karena scroll bar
+                    scrollY: -window.scrollY
                 });
 
-                // 4. Konversi Canvas ke Image Data
                 const imgData = canvas.toDataURL('image/png');
-                
-                // 5. Inisiasi jsPDF (kertas A4, portrait)
                 const { jsPDF } = window.jspdf;
-                const pdf = new jsPDF({
-                    orientation: 'p',
-                    unit: 'mm',
-                    format: 'a4'
-                });
+                const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
 
-                // 6. Kalkulasi Pagination (Pemisahan Halaman)
-                const pdfWidth = pdf.internal.pageSize.getWidth(); // Lebar A4 (~210mm)
-                const pageHeight = pdf.internal.pageSize.getHeight(); // Tinggi A4 (~297mm)
-                const imgHeight = (canvas.height * pdfWidth) / canvas.width; // Tinggi total konten LKPD secara proporsional
+                const pdfWidth = pdf.internal.pageSize.getWidth();
+                const pageHeight = pdf.internal.pageSize.getHeight();
+                const imgHeight = (canvas.height * pdfWidth) / canvas.width;
                 
-                let heightLeft = imgHeight - pageHeight;
-                let position = 0; // Posisi Y (vertikal)
+                let heightLeft = imgHeight;
+                let position = 0;
 
-                // 7. Tempel gambar ke halaman pertama
                 pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
+                heightLeft -= pageHeight;
 
-                // 8. Looping penambahan halaman baru jika konten masih tersisa ke bawah
                 while (heightLeft > 0) {
-                    position = position - pageHeight; // Menggeser titik awal gambar ke atas
+                    position -= pageHeight;
                     pdf.addPage();
                     pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
                     heightLeft -= pageHeight;
                 }
 
-                // 9. Eksekusi unduhan
                 pdf.save(`LKPD_Informatika_${lkpdClass}.pdf`);
-
             } catch (err) {
                 console.error("Gagal cetak PDF: ", err);
                 showModal("Gagal", "Terjadi kesalahan saat memproses PDF.", "❌");
             } finally {
-                // 10. Kembalikan ke tampilan dark mode asli dan munculkan kembali input asli
                 mirrors.forEach(m => {
                     m.input.style.display = m.input.getAttribute('data-original-display') || '';
                     m.mirror.remove();
                 });
-                
                 printArea.classList.remove('pdf-render-mode');
                 btnText.innerText = "📄 Unduh LKPD PDF";
                 btn.disabled = false;
@@ -861,12 +882,12 @@
 
             if (currentMode === 'pretest') {
                 window.studentScores.pre = score;
-                if (window.saveScoreToCloud) window.saveScoreToCloud(currentUser.name, currentUser.class, window.studentScores.pre, window.studentScores.post);
+                saveScoreToSheet(window.studentScores.pre, window.studentScores.post);
                 showModal('Pretest Selesai', `Nilai Pretest kamu: ${score}.\nSekarang ayo eksplorasi materi di tab Simulasi!`, '🎓');
                 nav('simulasi');
             } else {
                 window.studentScores.post = score;
-                if (window.saveScoreToCloud) window.saveScoreToCloud(currentUser.name, currentUser.class, window.studentScores.pre, window.studentScores.post);
+                saveScoreToSheet(window.studentScores.pre, window.studentScores.post);
                 let currentPre = window.studentScores.pre || 0;
                 let msg = score > currentPre ? 'Hebat! Terdeteksi ada peningkatan nilai.' : 'Tetap semangat belajar algoritma ya!';
                 showModal('Posttest Selesai', `Nilai Posttest kamu: ${score}.\n${msg}`, '🏆');
@@ -921,7 +942,7 @@
         function simStackPush() {
             if (stackData.length >= 6) return showModal('Penuh', 'Tumpukan penuh!', '⚠️');
             stackCount++;
-            stackData.push(String.fromCharCode(64 + stackCount)); // Push C, D, dst
+            stackData.push(String.fromCharCode(64 + stackCount));
             renderStack();
         }
         function simStackPop() {
@@ -958,7 +979,6 @@
 
         let activeLoops = { lin: false, bin: false, bub: false, ins: false };
 
-        // Linear Search (Ganti nama dari Sequential)
         const initialLin = [10, 25, 40, 55, 70];
         let linData = [...initialLin];
         let linGen = null;
@@ -1006,7 +1026,6 @@
             }
         }
 
-        // Binary Search
         const initialBin = [10, 20, 30, 40, 50, 60, 70];
         let binData = [...initialBin];
         let binGen = null;
@@ -1065,7 +1084,6 @@
             }
         }
 
-        // Sorting Arrays
         const unsortedArray = [40, 20, 50, 10, 30];
         let sortDataBubble = [...unsortedArray];
         let sortDataInsert = [...unsortedArray];
@@ -1181,7 +1199,7 @@
         function updateLeaderboard() {
             const tbody = document.getElementById('leaderboardBody');
             tbody.innerHTML = '';
-            const dataToRender = window.firebaseData && window.firebaseData.leaderboard.length > 0 ? window.firebaseData.leaderboard : [];
+            const dataToRender = window.firebaseData.leaderboard;
             
             dataToRender.forEach((row) => {
                 const pre = row.pre !== null && row.pre !== undefined ? row.pre : '-';
@@ -1208,7 +1226,7 @@
         function updateTeacherDashboard() {
             const tbody = document.getElementById('teacherTableBody');
             tbody.innerHTML = '';
-            const data = window.firebaseData ? window.firebaseData.leaderboard : [];
+            const data = window.firebaseData.leaderboard;
             
             document.getElementById('statTotalStudents').innerText = data.length;
             let sumPre = 0, countPre = 0, sumPost = 0, countPost = 0;
@@ -1240,7 +1258,7 @@
         }
 
         function triggerRandomPicker() {
-            const data = window.firebaseData ? window.firebaseData.leaderboard : [];
+            const data = window.firebaseData.leaderboard;
             if (data.length === 0) {
                 showModal('Random Challenge', 'Belum ada siswa yang masuk.', '⚠️');
                 return;
@@ -1250,7 +1268,7 @@
         }
 
         function downloadCSV() {
-            const data = window.firebaseData ? window.firebaseData.leaderboard : [];
+            const data = window.firebaseData.leaderboard;
             if (data.length === 0) {
                 showModal('Kosong', 'Belum ada data siswa.', '⚠️');
                 return;
@@ -1262,18 +1280,12 @@
                 const diff = (typeof r.pre === 'number' && typeof r.post === 'number') ? (r.post - r.pre) : '';
                 csv += `"${r.name}","${r.class}",${pre},${post},${diff}\r\n`;
             });
-            const blob = new Blob([csv], { type: 'text/csv' });
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url;
-            a.download = `Rekap_Nilai.csv`;
+            a.download = `Rekap_Nilai_Informatika.csv`;
             a.click();
-        }
-
-        function confirmResetClassData() {
-            if (confirm("⚠️ Hapus seluruh riwayat nilai siswa di database?")) {
-                if (window.resetCloudDatabase) window.resetCloudDatabase();
-            }
         }
 
         // Initialize UI
@@ -1281,133 +1293,6 @@
         renderLinSearch(); renderBinSearch();
         renderSort('bubbleContainer', sortDataBubble);
         renderSort('insertionContainer', sortDataInsert);
-    </script>
-
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, getDoc, deleteDoc, onSnapshot, collection, query, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
-        
-        window.firebaseData = { leaderboard: [] };
-        window.studentScores = { pre: null, post: null };
-        let db;
-        let unsubscribeLeaderboard = null; // Track listener to prevent duplicates
-
-        if (firebaseConfig) {
-            try {
-                const app = initializeApp(firebaseConfig);
-                db = getFirestore(app);
-                const auth = getAuth(app);
-                
-                const token = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-                const authPromise = token ? signInWithCustomToken(auth, token) : signInAnonymously(auth);
-                
-                authPromise.catch(err => console.warn("Auth initialization skipped/failed:", err));
-
-                onAuthStateChanged(auth, (user) => {
-                    if (user) {
-                        subscribeLeaderboard();
-                    }
-                });
-            } catch (error) {
-                console.error("Firebase Initialization Error:", error);
-            }
-        }
-
-        window.fetchStudentScores = async function(studentKey) {
-            if (!db) { nav('pretest'); return; }
-            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'leaderboard', studentKey);
-            try {
-                const docSnap = await getDoc(docRef);
-                if (docSnap.exists()) {
-                    const data = docSnap.data();
-                    window.studentScores.pre = data.pre !== undefined ? data.pre : null;
-                    window.studentScores.post = data.post !== undefined ? data.post : null;
-                } else {
-                    window.studentScores.pre = null; window.studentScores.post = null;
-                }
-            } catch (e) {
-                console.warn("Could not fetch student score:", e);
-                window.studentScores.pre = null; window.studentScores.post = null;
-            }
-            nav('pretest');
-        };
-
-        window.saveScoreToCloud = async function(name, cls, preScore, postScore) {
-            if (!window.currentStudentKey || !db) return;
-            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'leaderboard', window.currentStudentKey);
-            try {
-                await setDoc(docRef, {
-                    name: name, class: cls,
-                    pre: preScore !== undefined ? preScore : null,
-                    post: postScore !== undefined ? postScore : null,
-                    timestamp: Date.now()
-                }, { merge: true });
-            } catch (e) { console.warn("Could not save score:", e); }
-        };
-
-        window.resetCloudDatabase = async function() {
-            if (!db) { showModal('Gagal', 'Koneksi database tidak tersedia.', '❌'); return; }
-            const collRef = collection(db, 'artifacts', appId, 'public', 'data', 'leaderboard');
-            try {
-                const querySnapshot = await getDocs(collRef);
-                const deletePromises = [];
-                querySnapshot.forEach((document) => {
-                    deletePromises.push(deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'leaderboard', document.id)));
-                });
-                await Promise.all(deletePromises);
-                showModal('Berhasil', 'Riwayat kelas berhasil dikosongkan.', '🧹');
-                window.firebaseData.leaderboard = [];
-                updateTeacherDashboard(); updateLeaderboard();
-            } catch (e) {
-                console.error(e);
-                showModal('Gagal', 'Terjadi kesalahan saat menghapus data.', '❌');
-            }
-        };
-
-        function subscribeLeaderboard() {
-            if (!db) return;
-            
-            // Prevent duplicate listeners which cause internal assertion errors in Firestore
-            if (unsubscribeLeaderboard) {
-                unsubscribeLeaderboard();
-            }
-
-            try {
-                const collRef = collection(db, 'artifacts', appId, 'public', 'data', 'leaderboard');
-                const q = query(collRef);
-                
-                unsubscribeLeaderboard = onSnapshot(q, (snapshot) => {
-                    const data = [];
-                    snapshot.forEach(document => { data.push({ id: document.id, ...document.data()}); });
-                    
-                    data.sort((a, b) => {
-                        const postA = a.post !== null && a.post !== undefined ? a.post : -1;
-                        const postB = b.post !== null && b.post !== undefined ? b.post : -1;
-                        if (postB !== postA) return postB - postA;
-                        const preA = a.pre !== null && a.pre !== undefined ? a.pre : -1;
-                        const preB = b.pre !== null && b.pre !== undefined ? b.pre : -1;
-                        return preB - preA;
-                    });
-                    
-                    window.firebaseData.leaderboard = data;
-                    
-                    if (!document.getElementById('sec-leaderboard').classList.contains('hidden')) {
-                        if (typeof window.updateLeaderboard === 'function') window.updateLeaderboard();
-                    }
-                    if (!document.getElementById('sec-teacherdash').classList.contains('hidden')) {
-                        if (typeof window.updateTeacherDashboard === 'function') window.updateTeacherDashboard();
-                    }
-                }, (error) => { 
-                    console.warn("Error sync real-time (handled):", error); 
-                });
-            } catch(e) {
-                console.warn("Failed to attach listener:", e);
-            }
-        }
     </script>
 </body>
 </html>
